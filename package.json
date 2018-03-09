@@ -1,0 +1,17 @@
+{
+  "name": "bingo-game-backend",
+  "version": "1.0.0",
+  "description": "multi user bingo game for elderly people",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Jun Jung",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.4",
+    "express": "^4.16.2",
+    "shortid": "^2.2.8",
+    "socket.io": "^2.0.4"
+  }
+}

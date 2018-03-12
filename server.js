@@ -40,29 +40,49 @@ app.use(function(err, req, res, next) {
   res.status(err.status || 500);
   res.render("error");
 });
+
 // This is what the socket.io syntax is like, we will work this later
 io.sockets.on("connection", socket => {
   console.log("client connected ", socket.id);
   socket.emit("message", "You are connected!");
-  socket.myvarialble = "adf";
-  console.log(socket.myvarialble);
+
   socket.on("message", msg => {
     console.log(msg);
   });
-  socket.on("bingo join", (room_id, maxUser) => {
-    const room = `room=${room_id}`;
-    socket.join(room);
-    const clients = io.sockets.adapter.rooms[room];
-    console.log(`\nclient join`);
+  socket.on("bingo join", (room, maxUser) => {
+    socket.room = room;
+    socket.join(socket.room);
+    const clients = io.sockets.adapter.rooms[socket.room];
+    console.log(`\nclient join ${room}`);
 
-    console.log(`The number of user in room=${room_id}: ${clients.length}`);
+    console.log(
+      `The number of user in room=${socket.room}: ${
+        clients.length
+      } out of ${maxUser}`
+    );
     if (clients.length > maxUser) {
       console.log("Full");
       return socket.emit("Room Full", true);
     }
+    if (clients.length === 1) {
+      socket.role = "host";
+      socket.emit("your role", socket.role);
+    } else {
+      socket.role = "guest";
+      socket.emit("your role");
+    }
+    socket.broadcast.to(socket.room).emit("new user", socket.id);
+  });
+  socket.on("username change", username => {
+    console.log(`\nUsername is changed from ${socket.username}`);
+    socket.username = username;
+    console.log(`to ${socket.username}`);
+    socket.broadcast
+      .to(socket.room)
+      .emit("username change", { id: socket.id, username });
   });
   socket.on("bingo start", (size, room_id) => {
-    const room = `room=${room_id}`;
+    const room = `${room_id}`;
     console.log(`\nbingo start room: ${room}`);
     socket.broadcast.to(room).emit("bingo start", size);
     /* 
@@ -73,7 +93,7 @@ io.sockets.on("connection", socket => {
   });
   socket.on("number select", (value, room_id) => {
     console.log("\nSeleceted number is", value);
-    const room = `room=${room_id}`;
+    const room = `${room_id}`;
     const clients = io.sockets.adapter.rooms[room];
     const clientIds = Object.keys(clients.sockets);
     const whosTurnIndex = clientIds.findIndex(key => {
@@ -92,24 +112,24 @@ io.sockets.on("connection", socket => {
   });
   socket.on("bingo end", (message, room_id) => {
     console.log("bingo end");
-    const room = `room=${room_id}`;
+    const room = `${room_id}`;
     socket.broadcast.to(room).emit("bingo end", message);
   });
 
   socket.on("bingo leave", room_id => {
-    const room = `room=${room_id}`;
-    socket.leave(room);
-    const clients = io.sockets.adapter.rooms[room];
-    console.log(`\nClient left from ${room}`);
+    socket.leave(socket.room);
+    const clients = io.sockets.adapter.rooms[socket.room];
+    console.log(`\nClient left from ${socket.room}`);
     if (clients !== undefined) {
-      console.log(`The number of user in room=${room_id}: ${clients.length}`);
+      console.log(`The number of user in ${socket.room}: ${clients.length}`);
     } else {
       if (roomsArrays.length > 0) {
         const index = roomsArrays.findIndex(room => {
-          return room.id === room_id;
+          return room.id === socket.room;
         });
         if (index !== -1) {
           roomsArrays.splice(index, 1);
+          console.log(`${socket.room} has been destroyed.`);
         }
       }
     }
@@ -117,7 +137,23 @@ io.sockets.on("connection", socket => {
 
   // disconnect is fired when a client leaves the server
   socket.on("disconnect", () => {
-    console.log("user disconnected");
+    console.log("\nuser disconnected");
+    socket.leave(socket.room);
+    const clients = io.sockets.adapter.rooms[socket.room];
+    console.log(`\nClient left from ${socket.room}`);
+    if (clients !== undefined) {
+      console.log(`The number of user in ${socket.room}: ${clients.length}`);
+    } else {
+      if (roomsArrays.length > 0) {
+        const index = roomsArrays.findIndex(room => {
+          return room.id === socket.room;
+        });
+        if (index !== -1) {
+          roomsArrays.splice(index, 1);
+          console.log(`Room: ${socket.room} has been destroyed.`);
+        }
+      }
+    }
   });
 });
 

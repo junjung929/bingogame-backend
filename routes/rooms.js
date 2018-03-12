@@ -4,11 +4,13 @@ const shortid = require("shortid");
 const rooms = require("../roomsArray");
 
 router.post("/create", (req, res) => {
-  const { maxUser } = req.query;
+  const { maxUser, roomTitle } = req.query;
   const id = shortid.generate();
   const room = {
     id,
-    maxUser
+    maxUser,
+    title: roomTitle,
+    connectedUsers: 0
   };
   rooms.push(room);
   res.send(room);

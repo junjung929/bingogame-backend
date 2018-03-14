@@ -41,59 +41,115 @@ app.use(function(err, req, res, next) {
   res.render("error");
 });
 
+const games = [];
+
 // This is what the socket.io syntax is like, we will work this later
 io.sockets.on("connection", socket => {
   console.log("client connected ", socket.id);
-  socket.emit("message", "You are connected!");
 
-  socket.on("message", msg => {
-    console.log(msg);
-  });
   socket.on("bingo join", (room, maxUser) => {
     socket.room = room;
     socket.join(socket.room);
-    const clients = io.sockets.adapter.rooms[socket.room];
+    if (games[room]) {
+      Object.assign(games[room], { [socket.id]: { id: socket.id } });
+      games[room].length += 1;
+    } else {
+      Object.assign(games, {
+        [room]: { [socket.id]: { id: socket.id }, length: 1 }
+      });
+    }
+    const game = games[room];
     console.log(`\nclient join ${room}`);
 
     console.log(
       `The number of user in room=${socket.room}: ${
-        clients.length
+        game.length
       } out of ${maxUser}`
     );
-    if (clients.length > maxUser) {
+    if (game.length > maxUser) {
       console.log("Full");
       return socket.emit("Room Full", true);
     }
-    if (clients.length === 1) {
+    if (game.length === 1) {
       socket.role = "host";
+      socket.isReady = true;
+      game[socket.id].isReady = socket.isReady;
+      game[socket.id].role = socket.role;
       socket.emit("your role", socket.role);
     } else {
       socket.role = "guest";
-      socket.emit("your role");
+      game[socket.id].role = socket.role;
+      socket.emit("your role", socket.role);
     }
-    socket.broadcast.to(socket.room).emit("new user", socket.id);
+    // socket.broadcast.to(socket.room).emit("new user", socket.id);
+    socket.emit("bingo join", socket.id);
+    socket.emit("message", {
+      from: "system",
+      message: `You joined the game.`,
+      textAlign: "center"
+    });
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `User(${socket.id}) entered your game.`
+    });
+    io.sockets.in(socket.room).emit("users update", game);
   });
   socket.on("username change", username => {
     console.log(`\nUsername is changed from ${socket.username}`);
     socket.username = username;
     console.log(`to ${socket.username}`);
-    socket.broadcast
-      .to(socket.room)
-      .emit("username change", { id: socket.id, username });
+    const game = games[socket.room];
+    const user = game[socket.id];
+    user.username = username;
+    user.isReady = socket.isReady;
+    io.sockets.in(socket.room).emit("users update", game);
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `User(${socket.id}) changed username to "${username}"`
+    });
   });
-  socket.on("bingo start", (size, room_id) => {
-    const room = `${room_id}`;
+
+  socket.on("bingo ready", isReady => {
+    console.log(`\n${socket.username} is ${isReady ? "ready" : "not ready"}`);
+    const game = games[socket.room];
+    const user = game[socket.id];
+    user.isReady = isReady;
+    let readyCnt = 0;
+    for (let i in game) {
+      if (game[i].isReady === true) {
+        readyCnt++;
+      }
+    }
+    console.log(`${readyCnt} peope are ready in room ${socket.room}`);
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `User(${socket.username}) is ${isReady ? "ready" : "not ready"}.`
+    });
+    io.sockets.in(socket.room).emit("bingo ready", readyCnt);
+    io.sockets.in(socket.room).emit("users update", game);
+  });
+
+  socket.on("bingo start", size => {
+    const room = socket.room;
     console.log(`\nbingo start room: ${room}`);
-    socket.broadcast.to(room).emit("bingo start", size);
+    io.sockets.in(room).emit("bingo start", size);
+    if (socket.role === "host") {
+      socket.emit("whose turn", "you");
+      socket.broadcast.to(room).emit("whose turn", "host");
+    }
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `Game started.`
+    });
     /* 
     const clients = io.sockets.adapter.rooms[room];
     const clientIds = Object.keys(clients.sockets);
     const nextTurn = clientIds[0];
     io.to(nextTurn).emit("your turn", true); */
   });
-  socket.on("number select", (value, room_id) => {
+  socket.on("number select", value => {
     console.log("\nSeleceted number is", value);
-    const room = `${room_id}`;
+    const room = socket.room;
     const clients = io.sockets.adapter.rooms[room];
     const clientIds = Object.keys(clients.sockets);
     const whosTurnIndex = clientIds.findIndex(key => {
@@ -107,19 +163,40 @@ io.sockets.on("connection", socket => {
       console.log("now turn ", clientIds[whosTurnIndex]);
       console.log("next turn", nextTurn);
       io.to(nextTurn).emit("your turn", true);
-      socket.broadcast.to(room).emit("number selected", value);
+
+      io.sockets.in(room).emit("number selected", value);
     }
+  });
+  socket.on("message", msg => {
+    const from = socket.username ? socket.username : socket.id;
+    io.sockets.in(socket.room).emit("message", { from: from, message: msg });
   });
   socket.on("bingo end", (message, room_id) => {
     console.log("bingo end");
     const room = `${room_id}`;
     socket.broadcast.to(room).emit("bingo end", message);
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `Game ended.`
+    });
   });
 
   socket.on("bingo leave", room_id => {
     socket.leave(socket.room);
+    const game = games[socket.room];
+    if (game) {
+      game.length -= 1;
+      delete game[socket.id];
+    }
+
     const clients = io.sockets.adapter.rooms[socket.room];
     console.log(`\nClient left from ${socket.room}`);
+    socket.broadcast.to(socket.room).emit("bingo leave", socket.id);
+    io.sockets.in(socket.room).emit("users update", game);
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `User "${socket.id}" left from game.`
+    });
     if (clients !== undefined) {
       console.log(`The number of user in ${socket.room}: ${clients.length}`);
     } else {
@@ -139,8 +216,22 @@ io.sockets.on("connection", socket => {
   socket.on("disconnect", () => {
     console.log("\nuser disconnected");
     socket.leave(socket.room);
+
+    const game = games[socket.room];
+    if (game) {
+      game.length -= 1;
+      delete game[socket.id];
+    }
+
     const clients = io.sockets.adapter.rooms[socket.room];
-    console.log(`\nClient left from ${socket.room}`);
+    console.log(`Client left from ${socket.room}`);
+    socket.broadcast.to(socket.room).emit("bingo leave", socket.id);
+    io.sockets.in(socket.room).emit("users update", game);
+    socket.broadcast.to(socket.room).emit("message", {
+      from: "system",
+      message: `User "${socket.id}" left from game.`
+    });
+
     if (clients !== undefined) {
       console.log(`The number of user in ${socket.room}: ${clients.length}`);
     } else {
@@ -156,5 +247,4 @@ io.sockets.on("connection", socket => {
     }
   });
 });
-
 server.listen(port, () => console.log(`Listening on port ${port}`));

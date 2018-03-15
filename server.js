@@ -51,14 +51,15 @@ io.sockets.on("connection", socket => {
     socket.room = room;
     socket.join(socket.room);
     if (games[room]) {
-      Object.assign(games[room], { [socket.id]: { id: socket.id } });
+      Object.assign(games[room].users, { [socket.id]: { id: socket.id } });
       games[room].length += 1;
     } else {
       Object.assign(games, {
-        [room]: { [socket.id]: { id: socket.id }, length: 1 }
+        [room]: { users: { [socket.id]: { id: socket.id } }, length: 1 }
       });
     }
     const game = games[room];
+    const { users } = game;
     console.log(`\nclient join ${room}`);
 
     console.log(
@@ -73,12 +74,12 @@ io.sockets.on("connection", socket => {
     if (game.length === 1) {
       socket.role = "host";
       socket.isReady = true;
-      game[socket.id].isReady = socket.isReady;
-      game[socket.id].role = socket.role;
+      users[socket.id].isReady = socket.isReady;
+      users[socket.id].role = socket.role;
       socket.emit("your role", socket.role);
     } else {
       socket.role = "guest";
-      game[socket.id].role = socket.role;
+      users[socket.id].role = socket.role;
       socket.emit("your role", socket.role);
     }
     // socket.broadcast.to(socket.room).emit("new user", socket.id);
@@ -99,7 +100,8 @@ io.sockets.on("connection", socket => {
     socket.username = username;
     console.log(`to ${socket.username}`);
     const game = games[socket.room];
-    const user = game[socket.id];
+    const { users } = game;
+    const user = users[socket.id];
     user.username = username;
     user.isReady = socket.isReady;
     io.sockets.in(socket.room).emit("users update", game);
@@ -112,11 +114,12 @@ io.sockets.on("connection", socket => {
   socket.on("bingo ready", isReady => {
     console.log(`\n${socket.username} is ${isReady ? "ready" : "not ready"}`);
     const game = games[socket.room];
-    const user = game[socket.id];
+    const { users } = game;
+    const user = users[socket.id];
     user.isReady = isReady;
     let readyCnt = 0;
-    for (let i in game) {
-      if (game[i].isReady === true) {
+    for (let i in users) {
+      if (users[i].isReady === true) {
         readyCnt++;
       }
     }
@@ -134,8 +137,9 @@ io.sockets.on("connection", socket => {
     console.log(`\nbingo start room: ${room}`);
     io.sockets.in(room).emit("bingo start", size);
     if (socket.role === "host") {
-      socket.emit("whose turn", "you");
-      socket.broadcast.to(room).emit("whose turn", "host");
+      io.sockets.in(room).emit("whose turn", socket.username);
+      // socket.emit("whose turn", "you");
+      // socket.broadcast.to(room).emit("whose turn", "host");
     }
     socket.broadcast.to(socket.room).emit("message", {
       from: "system",
@@ -150,20 +154,29 @@ io.sockets.on("connection", socket => {
   socket.on("number select", value => {
     console.log("\nSeleceted number is", value);
     const room = socket.room;
-    const clients = io.sockets.adapter.rooms[room];
-    const clientIds = Object.keys(clients.sockets);
-    const whosTurnIndex = clientIds.findIndex(key => {
+    const game = games[room];
+    const { users } = game;
+    const usersIds = Object.keys(users);
+    const whosTurnIndex = usersIds.findIndex(key => {
       return key === socket.id;
     });
-    if (whosTurnIndex > -1) {
-      let nextTurn = clientIds[0];
-      if (whosTurnIndex + 1 < clients.length) {
-        nextTurn = clientIds[whosTurnIndex + 1];
-      }
-      console.log("now turn ", clientIds[whosTurnIndex]);
-      console.log("next turn", nextTurn);
-      io.to(nextTurn).emit("your turn", true);
 
+    /* const clients = io.sockets.adapter.rooms[room];
+    console.log(clients);
+    const clientIds = Object.keys(clients.sockets);
+    console.log(clientIds);
+    const whosTurnIndex = clientIds.findIndex(key => {
+      return key === socket.id;
+    }); */
+    if (whosTurnIndex > -1) {
+      let nextTurn = usersIds[0]; //clientIds[0];
+      if (whosTurnIndex + 1 < game.length) {
+        nextTurn = usersIds[whosTurnIndex + 1]; //clientIds[whosTurnIndex + 1];
+      }
+      console.log("now turn ", usersIds[whosTurnIndex]); //clientIds[whosTurnIndex]);
+      console.log("next turn", nextTurn);
+      // io.to(nextTurn).emit("whose turn", "you");
+      io.sockets.in(room).emit("whose turn", users[nextTurn].username);
       io.sockets.in(room).emit("number selected", value);
     }
   });
@@ -171,14 +184,14 @@ io.sockets.on("connection", socket => {
     const from = socket.username ? socket.username : socket.id;
     io.sockets.in(socket.room).emit("message", { from: from, message: msg });
   });
-  socket.on("bingo end", (message, room_id) => {
-    console.log("bingo end");
-    const room = `${room_id}`;
-    socket.broadcast.to(room).emit("bingo end", message);
-    socket.broadcast.to(socket.room).emit("message", {
+  socket.on("bingo end", winner => {
+    console.log("bingo end winner is", winner);
+    const room = `${socket.room}`;
+    io.sockets.in(room).emit("message", {
       from: "system",
       message: `Game ended.`
     });
+    io.sockets.in(room).emit("bingo end", winner);
   });
 
   socket.on("bingo leave", room_id => {
@@ -186,7 +199,7 @@ io.sockets.on("connection", socket => {
     const game = games[socket.room];
     if (game) {
       game.length -= 1;
-      delete game[socket.id];
+      delete game.users[socket.id];
     }
 
     const clients = io.sockets.adapter.rooms[socket.room];
@@ -220,7 +233,7 @@ io.sockets.on("connection", socket => {
     const game = games[socket.room];
     if (game) {
       game.length -= 1;
-      delete game[socket.id];
+      delete game.users[socket.id];
     }
 
     const clients = io.sockets.adapter.rooms[socket.room];

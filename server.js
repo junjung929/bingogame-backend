@@ -6,7 +6,7 @@ const rooms = require("./routes/rooms");
 const axios = require("axios");
 const SessionSockets = require("session.socket.io");
 
-const roomsArrays = require("./roomsArray");
+const games = require("./roomsArray");
 
 // our localhost port
 const port = 4001;
@@ -41,7 +41,7 @@ app.use(function(err, req, res, next) {
   res.render("error");
 });
 
-const games = [];
+// const games = [];
 
 // This is what the socket.io syntax is like, we will work this later
 io.sockets.on("connection", socket => {
@@ -213,14 +213,14 @@ io.sockets.on("connection", socket => {
     if (clients !== undefined) {
       console.log(`The number of user in ${socket.room}: ${clients.length}`);
     } else {
-      if (roomsArrays.length > 0) {
-        const index = roomsArrays.findIndex(room => {
-          return room.id === socket.room;
-        });
-        if (index !== -1) {
-          roomsArrays.splice(index, 1);
-          console.log(`${socket.room} has been destroyed.`);
-        }
+      const keys = Object.keys(games);
+      const index = keys.findIndex(key => {
+        return key === socket.room;
+      });
+      if (index !== -1) {
+        games.length--;
+        delete games[socket.room];
+        console.log(`${socket.room} has been destroyed.`);
       }
     }
   });
@@ -248,14 +248,14 @@ io.sockets.on("connection", socket => {
     if (clients !== undefined) {
       console.log(`The number of user in ${socket.room}: ${clients.length}`);
     } else {
-      if (roomsArrays.length > 0) {
-        const index = roomsArrays.findIndex(room => {
-          return room.id === socket.room;
-        });
-        if (index !== -1) {
-          roomsArrays.splice(index, 1);
-          console.log(`Room: ${socket.room} has been destroyed.`);
-        }
+      const keys = Object.keys(games);
+      const index = keys.findIndex(key => {
+        return key === socket.room;
+      });
+      if (index !== -1) {
+        games.length--;
+        delete games[socket.room];
+        console.log(`${socket.room} has been destroyed.`);
       }
     }
   });

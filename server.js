@@ -93,7 +93,12 @@ io.sockets.on("connection", socket => {
       from: "system",
       message: `User(${socket.id}) entered your game.`
     });
-    io.sockets.in(socket.room).emit("users update", game);
+    const keys = Object.keys(users);
+    const usersUpdate = [];
+    for (key in users) {
+      usersUpdate.push(users[key]);
+    }
+    io.sockets.in(socket.room).emit("users update", usersUpdate);
   });
   socket.on("username change", username => {
     console.log(`\nUsername is changed from ${socket.username}`);
@@ -104,7 +109,12 @@ io.sockets.on("connection", socket => {
     const user = users[socket.id];
     user.username = username;
     user.isReady = socket.isReady;
-    io.sockets.in(socket.room).emit("users update", game);
+    const keys = Object.keys(users);
+    const usersUpdate = [];
+    for (key in users) {
+      usersUpdate.push(users[key]);
+    }
+    io.sockets.in(socket.room).emit("users update", usersUpdate);
     socket.broadcast.to(socket.room).emit("message", {
       from: "system",
       message: `User(${socket.id}) changed username to "${username}"`
@@ -129,7 +139,12 @@ io.sockets.on("connection", socket => {
       message: `User(${socket.username}) is ${isReady ? "ready" : "not ready"}.`
     });
     io.sockets.in(socket.room).emit("bingo ready", readyCnt);
-    io.sockets.in(socket.room).emit("users update", game);
+    const keys = Object.keys(users);
+    const usersUpdate = [];
+    for (key in users) {
+      usersUpdate.push(users[key]);
+    }
+    io.sockets.in(socket.room).emit("users update", usersUpdate);
   });
 
   socket.on("bingo start", size => {
@@ -199,13 +214,20 @@ io.sockets.on("connection", socket => {
     const game = games[socket.room];
     if (game) {
       game.length -= 1;
+      const { users } = game;
+      const keys = Object.keys(users);
+      const usersUpdate = [];
+      for (key in users) {
+        usersUpdate.push(users[key]);
+      }
+      io.sockets.in(socket.room).emit("users update", usersUpdate);
       delete game.users[socket.id];
     }
 
     const clients = io.sockets.adapter.rooms[socket.room];
     console.log(`\nClient left from ${socket.room}`);
     socket.broadcast.to(socket.room).emit("bingo leave", socket.id);
-    io.sockets.in(socket.room).emit("users update", game);
+
     socket.broadcast.to(socket.room).emit("message", {
       from: "system",
       message: `User "${socket.id}" left from game.`
@@ -233,13 +255,20 @@ io.sockets.on("connection", socket => {
     const game = games[socket.room];
     if (game) {
       game.length -= 1;
+      const { users } = game;
+      const keys = Object.keys(users);
+      const usersUpdate = [];
+      for (key in users) {
+        usersUpdate.push(users[key]);
+      }
+      io.sockets.in(socket.room).emit("users update", usersUpdate);
       delete game.users[socket.id];
     }
 
     const clients = io.sockets.adapter.rooms[socket.room];
     console.log(`Client left from ${socket.room}`);
     socket.broadcast.to(socket.room).emit("bingo leave", socket.id);
-    io.sockets.in(socket.room).emit("users update", game);
+
     socket.broadcast.to(socket.room).emit("message", {
       from: "system",
       message: `User "${socket.id}" left from game.`

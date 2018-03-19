@@ -122,6 +122,7 @@ io.sockets.on("connection", socket => {
   });
 
   socket.on("bingo ready", isReady => {
+    if (socket.role === "host") return;
     console.log(`\n${socket.username} is ${isReady ? "ready" : "not ready"}`);
     const game = games[socket.room];
     const { users } = game;
@@ -202,6 +203,10 @@ io.sockets.on("connection", socket => {
   socket.on("bingo end", winner => {
     console.log("bingo end winner is", winner);
     const room = `${socket.room}`;
+    io.sockets.in(room).emit("message", {
+      from: "system",
+      message: `${winner} is winner!`
+    });
     io.sockets.in(room).emit("message", {
       from: "system",
       message: `Game ended.`
